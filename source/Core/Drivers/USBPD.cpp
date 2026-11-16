@@ -44,6 +44,7 @@ bool USBPowerDelivery::start() {
   return false;
 }
 void    USBPowerDelivery::IRQOccured() { pe.IRQOccured(); }
+void    USBPowerDelivery::renegotiate() { pe.renegotiate(); }
 bool    USBPowerDelivery::negotiationHasWorked() { return pe.pdHasNegotiated(); }
 uint8_t USBPowerDelivery::getStateNumber() { return pe.currentStateCode(true); }
 void    USBPowerDelivery::step() {

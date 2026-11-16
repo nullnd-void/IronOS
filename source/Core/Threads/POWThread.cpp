@@ -25,9 +25,18 @@ void startPOWTask(void const *argument __unused) {
 
   // Init any other misc sensors
   postRToSInit();
+#if !defined(MODEL_TS101)
   while (preStartChecksDone() == 0) {
     osDelay(3);
   }
+#endif
+  // TS101: start USB-PD straight away rather than after the ~1.6s tip-resistance
+  // measurement; some sources power-cycle VBUS if their Source_Capabilities go
+  // unanswered for ~2s. Until the tip is measured getTipResistanceX10() returns a
+  // conservative value, and we renegotiate once the measurement is done.
+#ifdef MODEL_TS101
+  bool renegotiatedAfterTipCheck = false;
+#endif
   // You have to run this once we are willing to answer PD messages
   // Setting up too early can mean that we miss the ~20ms window to respond on some chargers
 #ifdef POW_PD
@@ -60,6 +69,12 @@ void startPOWTask(void const *argument __unused) {
     }
     USBPowerDelivery::PPSTimerCallback();
     USBPowerDelivery::step();
+#ifdef MODEL_TS101
+    if (!renegotiatedAfterTipCheck && preStartChecksDone() && USBPowerDelivery::negotiationHasWorked()) {
+      renegotiatedAfterTipCheck = true;
+      USBPowerDelivery::renegotiate();
+    }
+#endif
 
 #else
     (void)res;
