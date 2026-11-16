@@ -59,12 +59,21 @@ void startPOWTask(void const *argument __unused) {
      * Then Good CRC is set while reading it out (racing on I2C read)
      * Then we would sleep as nothing to do, but 100ms> 20ms power supply typical timeout
      */
+#if defined(MODEL_TS101) && defined(POW_PD)
+    // TS101: until a PD contract exists, poll the FUSB302 every tick instead of relying on
+    // the INT_PD edge interrupt. Sources expect our Request within ~25ms of their
+    // Source_Capabilities; a missed edge plus the 50ms idle wait is too slow, and they
+    // power-cycle VBUS (PD debug stuck at state 6, then reboot).
+    const bool pdFastPoll = !USBPowerDelivery::negotiationHasWorked();
+#else
+    const bool pdFastPoll = false;
+#endif
     if (!getFUS302IRQLow()) {
-      res = xTaskNotifyWait(0x0, 0xFFFFFF, NULL, TICKS_100MS / 2);
+      res = xTaskNotifyWait(0x0, 0xFFFFFF, NULL, pdFastPoll ? 1 : (TICKS_100MS / 2));
     }
 
 #ifdef POW_PD
-    if (res != pdFALSE || getFUS302IRQLow()) {
+    if (res != pdFALSE || getFUS302IRQLow() || pdFastPoll) {
       USBPowerDelivery::IRQOccured();
     }
     USBPowerDelivery::PPSTimerCallback();
