@@ -26,6 +26,9 @@ jobs:
       - name: Git ownership exception
         run: git config --global --add safe.directory '*'
 
+      - name: Apply usb-pd CC line fix
+        run: git -C source/Core/Drivers/usb-pd apply "$GITHUB_WORKSPACE/patches/usbpd-cc-line-fix.patch" && git -C source/Core/Drivers/usb-pd diff --stat
+
       - name: Build TS101 (English)
         run: cd source && ./build.sh -l EN -m TS101
 

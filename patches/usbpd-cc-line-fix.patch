@@ -1,0 +1,67 @@
+diff --git a/src/fusb302b.cpp b/src/fusb302b.cpp
+index 41d0e65..911bb76 100644
+--- a/src/fusb302b.cpp
++++ b/src/fusb302b.cpp
+@@ -152,28 +152,44 @@ bool FUSB302::fusb_setup() const {
+ }
+ 
+ bool FUSB302::runCCLineSelection() const {
+-  /* Poll CC1 and CC2 until one of them is live */
+-  bool measuringCC1 = true;
+-
+-  for (uint16_t attempt = 0; attempt <= 300; attempt++) {
+-    // PWDN1|PWDN2|MEAS_CC1/MEAS_CC2
+-    const uint8_t switches0 = measuringCC1 ? 0x07 : 0x0B;
+-    if (!fusb_write_byte(FUSB_SWITCHES0, switches0)) {
++  /* Find the CC line the source's Rp is on.
++   *
++   * Only BC_LVL (STATUS0[1:0]) is the CC comparator level. STATUS0 bit 2 (WAKE) and
++   * bit 3 (ALERT) must not be counted: WAKE is typically set while a source is attached,
++   * which made "(STATUS0 & 0x0F) > 1" true on whichever line was measured first, so the
++   * wrong CC line was bound in one plug orientation.
++   * Any BC_LVL >= 1 (>= 200mV) means Rp is present, including sources that advertise
++   * Default USB current (BC_LVL == 1); the unused line (open or Ra) reads 0.
++   *
++   * Poll both lines until they differ (Rp may not have settled at first read), then bind
++   * the higher one. If they never differ, fall back to the original v2.23 behaviour. */
++  uint8_t cc1 = 0;
++  uint8_t cc2 = 0;
++  for (uint16_t attempt = 0; attempt < 100; attempt++) {
++    // PWDN1|PWDN2|MEAS_CC1
++    if (!fusb_write_byte(FUSB_SWITCHES0, 0x07)) {
++      return false;
++    }
++    osDelay(5);
++    cc1 = fusb_read_byte(FUSB_STATUS0) & FUSB_STATUS0_BC_LVL;
++    // PWDN1|PWDN2|MEAS_CC2
++    if (!fusb_write_byte(FUSB_SWITCHES0, 0x0B)) {
+       return false;
+     }
+-    osDelay(1);
+-
+-    if ((fusb_read_byte(FUSB_STATUS0) & 0x0F) > 1) {
+-      /* Select the live CC line for BMC signaling; also enable AUTO_CRC */
+-      // TX_CC1/TX_CC2|AUTO_CRC|SPECREV0
+-      if (!fusb_write_byte(FUSB_SWITCHES1, measuringCC1 ? 0x25 : 0x26)) {
+-        return false;
+-      }
+-      return fusb_write_byte(FUSB_SWITCHES0, switches0);
++    osDelay(5);
++    cc2 = fusb_read_byte(FUSB_STATUS0) & FUSB_STATUS0_BC_LVL;
++    if (cc1 != cc2) {
++      break;
+     }
+-    measuringCC1 = !measuringCC1;
+   }
+-  return true;
++  const bool useCC1 = cc1 > cc2;
++  /* Select the live CC line for BMC signaling; also enable AUTO_CRC */
++  // TX_CC1/TX_CC2|AUTO_CRC|SPECREV0
++  if (!fusb_write_byte(FUSB_SWITCHES1, useCC1 ? 0x25 : 0x26)) {
++    return false;
++  }
++  // PWDN1|PWDN2|MEAS_CC1/MEAS_CC2
++  return fusb_write_byte(FUSB_SWITCHES0, useCC1 ? 0x07 : 0x0B);
+ }
+ 
+ bool FUSB302::isVBUSConnected() const {
