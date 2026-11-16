@@ -231,9 +231,12 @@
 // top-left portion of the panel. Send each command/data chunk as its own I2C
 // transaction instead (see OLED.cpp).
 #define OLED_I2C_PER_BYTE_TRANSFERS 1
-// This panel needs a non-zero, orientation-dependent SSD1306 vertical Display
-// Offset (0xD3); without it the image renders shifted by half the screen height.
-#define OLED_DISPLAY_OFFSET_QUIRK 1
+// OLED_DISPLAY_OFFSET_QUIRK disabled: the half-height shift it worked around was caused
+// by page-addressing commands being sent while the controller was in horizontal
+// addressing mode (fixed in OLED.cpp). With page addressing, the v2.23 TS101 settings
+// (offset 0, segment remap / COM scan per OLED_SEGMENT_MAP_REVERSED + OLED_FLIP) are
+// correct on this panel.
+// #define OLED_DISPLAY_OFFSET_QUIRK 1
 
 #endif /* TS101 */
 
