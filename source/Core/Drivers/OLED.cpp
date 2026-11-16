@@ -80,7 +80,17 @@ I2C_CLASS::I2C_REG OLED_Setup_Array[] = {
     {0x80,             0x10, 0}, /* Enable internal IREF */
 #endif
     {0x80,             0x20, 0}, /* Memory Mode */
+#ifdef OLED_I2C_PER_BYTE_TRANSFERS
+    // The per-byte path (oled_bulk_write) positions every write with the page-addressing
+    // commands 0xB0+page / 0x1x / 0x0x, which the SSD1306 ignores in horizontal mode.
+    // In horizontal mode each 512-byte frame just continues from where the last one
+    // ended, so successive frames land alternately in GDDRAM pages 0-3 and 4-7 and the
+    // panel shows the two halves of the image swapped. Use page addressing (the
+    // controller's reset default, which the stock Miniware firmware relies on).
+    {0x80,             0x02, 0}, /* Page addressing mode */
+#else
     {0x80,             0x00, 0}, /* Wrap memory */
+#endif
     {0x80,          OLED_ON, 0}, /* Display on */
 };
 // Setup based on the SSD1307 and modified for the SSD1306
