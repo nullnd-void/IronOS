@@ -87,6 +87,20 @@ void    USBPowerDelivery::step() {
     if (newA & 0x02) {
       diagLog(0x0E);
     }
+    // First three transmitted messages: header as four nibbles (0xC0|n, high nibble first)
+    // and, if any I2C write to the TX FIFO failed, 0xA0|mask (1=SOP 2=message 4=EOP)
+    static uint8_t seenTx = 0;
+    if (fusbDiag.txCount != seenTx && seenTx < 3) {
+      seenTx++;
+      const uint16_t h = fusbDiag.lastTxHdr;
+      diagLog(0xC0 | ((h >> 12) & 0x0F));
+      diagLog(0xC0 | ((h >> 8) & 0x0F));
+      diagLog(0xC0 | ((h >> 4) & 0x0F));
+      diagLog(0xC0 | (h & 0x0F));
+      if (fusbDiag.txFail) {
+        diagLog(0xA0 | (fusbDiag.txFail & 0x07));
+      }
+    }
   }
 #else
   while (pe.thread()) {

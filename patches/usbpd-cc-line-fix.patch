@@ -1,8 +1,8 @@
 diff --git a/include/fusb302b.h b/include/fusb302b.h
-index 4537c8c..38c76ab 100644
+index 4537c8c..9fcbd37 100644
 --- a/include/fusb302b.h
 +++ b/include/fusb302b.h
-@@ -21,6 +21,24 @@
+@@ -21,6 +21,27 @@
  #include "pd.h"
  #include "pdb_msg.h"
  
@@ -21,6 +21,9 @@ index 4537c8c..38c76ab 100644
 +  volatile uint8_t  rxBad;      // FIFO entries that were not SOP
 +  volatile uint8_t  statusFail; // failed status reads (I2C)
 +  volatile uint16_t lastHdr;    // header of the last SOP message
++  volatile uint16_t lastTxHdr;  // header of the last message we transmitted
++  volatile uint8_t  txCount;    // number of messages handed to the TX FIFO
++  volatile uint8_t  txFail;     // bit0/1/2: I2C write of SOP / message / EOP part failed
 +};
 +extern FusbDiag fusbDiag;
 +
@@ -28,10 +31,40 @@ index 4537c8c..38c76ab 100644
  public:
    typedef bool (*I2CFunc)(const uint8_t deviceAddr, const uint8_t registerAdd, const uint8_t size, uint8_t *buf);
 diff --git a/src/fusb302b.cpp b/src/fusb302b.cpp
-index 41d0e65..ef93cc4 100644
+index 41d0e65..af95115 100644
 --- a/src/fusb302b.cpp
 +++ b/src/fusb302b.cpp
-@@ -59,6 +59,8 @@ void    FUSB302::fusb_send_message(const pd_msg *msg) const {
+@@ -36,14 +36,17 @@ void    FUSB302::fusb_send_message(const pd_msg *msg) const {
+   sop_seq[4] = FUSB_FIFO_TX_PACKSYM | msg_len;
+ 
+   /* Write all three parts of the message to the TX FIFO */
++  uint8_t failMask = 0;
+   bool result = I2CWrite(DeviceAddress, FUSB_FIFOS, 5, sop_seq);
+   if (!result) {
++    failMask |= 1;
+ #ifdef PD_DEBUG_OUTPUT
+     printf("I2CWrite failed 1\r\n");
+ #endif
+   }
+   result = I2CWrite(DeviceAddress, FUSB_FIFOS, msg_len, (uint8_t *)msg->bytes);
+   if (!result) {
++    failMask |= 2;
+ #ifdef PD_DEBUG_OUTPUT
+     printf("I2CWrite failed 2\r\n");
+ #endif
+@@ -51,14 +54,20 @@ void    FUSB302::fusb_send_message(const pd_msg *msg) const {
+ 
+   result = I2CWrite(DeviceAddress, FUSB_FIFOS, 4, (uint8_t *)eop_seq);
+   if (!result) {
++    failMask |= 4;
+ #ifdef PD_DEBUG_OUTPUT
+     printf("I2CWrite failed 3\r\n");
+ #endif
+   }
++  fusbDiag.lastTxHdr = msg->hdr;
++  fusbDiag.txFail    = fusbDiag.txFail | failMask;
++  fusbDiag.txCount   = fusbDiag.txCount + 1;
+ }
  
  bool FUSB302::fusb_rx_pending() const { return (fusb_read_byte(FUSB_STATUS1) & FUSB_STATUS1_RX_EMPTY) != FUSB_STATUS1_RX_EMPTY; }
  
@@ -40,7 +73,7 @@ index 41d0e65..ef93cc4 100644
  uint8_t FUSB302::fusb_read_message(pd_msg *msg) const {
  
    static uint8_t garbage[4];
-@@ -94,11 +96,12 @@ void FUSB302::fusb_send_hardrst() const {
+@@ -94,11 +103,12 @@ void FUSB302::fusb_send_hardrst() const {
  }
  
  bool FUSB302::fusb_setup() const {
@@ -56,7 +89,7 @@ index 41d0e65..ef93cc4 100644
    uint8_t tries = 0;
    while (!fusb_read_id()) {
      osDelay(10);
-@@ -152,28 +155,48 @@ bool FUSB302::fusb_setup() const {
+@@ -152,28 +162,48 @@ bool FUSB302::fusb_setup() const {
  }
  
  bool FUSB302::runCCLineSelection() const {
@@ -123,7 +156,7 @@ index 41d0e65..ef93cc4 100644
  }
  
  bool FUSB302::isVBUSConnected() const {
-@@ -221,6 +244,7 @@ bool FUSB302::fusb_read_id() const {
+@@ -221,6 +251,7 @@ bool FUSB302::fusb_read_id() const {
      return res;
    if (version == 0 || version == 0xFF)
      return false;
