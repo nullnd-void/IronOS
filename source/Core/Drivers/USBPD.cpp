@@ -51,8 +51,47 @@ void    USBPowerDelivery::renegotiate() { pe.renegotiate(); }
 bool    USBPowerDelivery::negotiationHasWorked() { return pe.pdHasNegotiated(); }
 uint8_t USBPowerDelivery::getStateNumber() { return pe.currentStateCode(true); }
 void    USBPowerDelivery::step() {
+#ifdef MODEL_TS101
+  // Diagnostics: log every policy-engine state change as 0x40 + state, and newly seen
+  // FUSB302 interrupt flags (0x0B tx sent, 0x0C tx retries failed, 0x0D hard reset
+  // received, 0x0E soft reset received, 0x0F GoodCRC sent for a received message)
+  static uint8_t lastState = 0xFF;
+  static uint8_t budget    = 80;
+  static uint8_t seenA     = 0;
+  static uint8_t seenB     = 0;
+  bool           more      = true;
+  while (more) {
+    more             = pe.thread();
+    const uint8_t st = (uint8_t)pe.currentStateCode(false);
+    if (st != lastState && st > 2 && budget) {
+      budget--;
+      lastState = st;
+      diagLog(0x40 + st);
+    }
+    const uint8_t newA = fusbDiag.irqA & ~seenA;
+    const uint8_t newB = fusbDiag.irqB & ~seenB;
+    seenA |= newA;
+    seenB |= newB;
+    if (newB & 0x01) {
+      diagLog(0x0F);
+    }
+    if (newA & 0x04) {
+      diagLog(0x0B);
+    }
+    if (newA & 0x10) {
+      diagLog(0x0C);
+    }
+    if (newA & 0x01) {
+      diagLog(0x0D);
+    }
+    if (newA & 0x02) {
+      diagLog(0x0E);
+    }
+  }
+#else
   while (pe.thread()) {
   }
+#endif
 }
 
 void USBPowerDelivery::PPSTimerCallback() { pe.TimersCallback(); }
@@ -320,6 +359,9 @@ bool pdbs_dpm_evaluate_capability(const pd_msg *capabilities, pd_msg *request) {
 
   if (parseCapabilitiesArray(numobj, &bestIndex, &bestIndexVoltage, &bestIndexCurrent, &bestIsPPS, &bestIsAVS)) {
     /* We got what we wanted, so build a request for that */
+#ifdef MODEL_TS101
+    diagLog(0x60 + (uint8_t)(bestIndexVoltage / 1000)); // 0x60 + volts requested (hex)
+#endif
     request->hdr = PD_MSGTYPE_REQUEST | PD_NUMOBJ(1);
     if (bestIsPPS) {
       request->obj[0] = PD_RDO_PROG_CURRENT_SET(PD_CA2PAI(bestIndexCurrent)) | PD_RDO_PROG_VOLTAGE_SET(PD_MV2PRV(bestIndexVoltage)) | PD_RDO_NO_USB_SUSPEND | PD_RDO_OBJPOS_SET(bestIndex + 1);
@@ -337,6 +379,9 @@ bool pdbs_dpm_evaluate_capability(const pd_msg *capabilities, pd_msg *request) {
     powerSupplyWattageLimit = bestIndexVoltage * bestIndexCurrent / 100 / 1000; // Set watts for limit from PSU limit
 
   } else {
+#ifdef MODEL_TS101
+    diagLog(0x60); // nothing matched: asking for 5V
+#endif
     /* Nothing matched (or no configuration), so get 5 V at low current */
     request->hdr    = PD_MSGTYPE_REQUEST | PD_NUMOBJ(1);
     request->obj[0] = PD_RDO_FV_MAX_CURRENT_SET(100) | PD_RDO_FV_CURRENT_SET(100) | PD_RDO_NO_USB_SUSPEND | PD_RDO_OBJPOS_SET(1);
