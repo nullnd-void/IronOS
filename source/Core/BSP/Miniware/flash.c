@@ -104,10 +104,31 @@ uint8_t diagLogReadBack(int16_t back) {
   return (uint8_t)(page[idx] & 0xFF);
 }
 
+// As diagLogReadBack, but skipping the uptime ticks (0x10..0x3F) so the viewer only shows
+// events: n = 1 is the most recent event before this boot.
+uint8_t diagLogReadBackEvents(int16_t n) {
+  const uint16_t *page = (const uint16_t *)DIAG_LOG_PAGE;
+  if (diagLogNext < 0 || n < 1) {
+    return 0xFF;
+  }
+  for (int16_t idx = diagLogAtBoot - 1; idx >= 0; idx--) {
+    uint8_t v = (uint8_t)(page[idx] & 0xFF);
+    if (v >= 0x10 && v <= 0x3F) {
+      continue;
+    }
+    n--;
+    if (n == 0) {
+      return v;
+    }
+  }
+  return 0xFF;
+}
+
 void diagLogBoot(void) {
   // Reset cause flags live in the top bits of RCC->CSR
   uint8_t flags = (uint8_t)((RCC->CSR >> 26) & 0x0F);
   __HAL_RCC_CLEAR_RESET_FLAGS();
   diagLog(0x80 | flags);
+  diagLog(0xBA); // marker: this boot was recorded by diagnostic build 10
 }
 #endif

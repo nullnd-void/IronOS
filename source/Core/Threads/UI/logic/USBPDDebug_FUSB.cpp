@@ -4,7 +4,7 @@
 #include "pd.h"
 #ifdef MODEL_TS101
 #include "fusb302b.h"
-extern "C" uint8_t diagLogReadBack(int16_t back);
+extern "C" uint8_t diagLogReadBackEvents(int16_t n);
 #endif
 #ifdef HAS_POWER_DEBUG_MENU
 OperatingMode showPDDebug(const ButtonState buttons, guiContext *cxt) {
@@ -19,7 +19,7 @@ OperatingMode showPDDebug(const ButtonState buttons, guiContext *cxt) {
     const int16_t page = (int16_t)(*screen);
     for (uint8_t i = 0; i < 10; i++) {
       // i = 0 is the oldest entry on this page
-      uint8_t value = diagLogReadBack((int16_t)((page * 10) + (10 - i)));
+      uint8_t value = diagLogReadBackEvents((int16_t)((page * 10) + (10 - i)));
       OLED::setCursor((i % 5) * 24, (i < 5) ? 0 : 16);
       OLED::drawHex(((uint32_t)value) << 24, FontStyle::SMALL, 2);
     }
