@@ -129,6 +129,6 @@ void diagLogBoot(void) {
   uint8_t flags = (uint8_t)((RCC->CSR >> 26) & 0x0F);
   __HAL_RCC_CLEAR_RESET_FLAGS();
   diagLog(0x80 | flags);
-  diagLog(0xBB); // marker: this boot was recorded by diagnostic build 11
+  diagLog(0xBC); // marker: this boot was recorded by diagnostic build 12
 }
 #endif
