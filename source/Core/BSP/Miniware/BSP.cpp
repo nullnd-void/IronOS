@@ -385,6 +385,13 @@ uint8_t getTipResistanceX10() {
   // We can measure this using the op-amp
   uint8_t user_selected_tip = getUserSelectedTipResistance();
   if (user_selected_tip == 0) {
+    if (lastTipResistance == 0) {
+      // Not measured yet. USB-PD now starts before the tip measurement finishes (some
+      // sources power-cycle if nothing answers within ~2s), so assume the lowest tip
+      // resistance we detect: this makes PD pick a conservative voltage. The PD contract
+      // is renegotiated once the real value is known (see POWThread).
+      return 40;
+    }
     return lastTipResistance; // Auto mode
   }
   return user_selected_tip;

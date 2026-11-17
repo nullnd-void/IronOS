@@ -8,6 +8,19 @@
 #ifdef I2C_SOFT_BUS_2
 #include "FreeRTOS.h"
 #include <I2CBB2.hpp>
+#ifdef MODEL_TS101
+// The USB-PD chip's bus runs slower than the default (~100kHz) on the TS101. This was part of the
+// build that first negotiated USB-PD reliably; the actual fix was the transmit method in the
+// usb-pd library, so this slower speed is probably not required, just known to work.
+#define I2CBB2_DELAY()                \
+  {                                   \
+    for (int xx = 0; xx < 40; xx++) { \
+      asm("nop");                     \
+    }                                 \
+  }
+#else
+#define I2CBB2_DELAY() SOFT_I2C_DELAY()
+#endif
 SemaphoreHandle_t I2CBB2::I2CSemaphore = NULL;
 StaticSemaphore_t I2CBB2::xSemaphoreBuffer;
 void              I2CBB2::init() {
@@ -73,7 +86,7 @@ bool I2CBB2::Mem_Read(uint16_t DevAddress, uint16_t MemAddress, uint8_t *pData, 
     return false;
   }
   SOFT_SCL2_LOW();
-  SOFT_I2C_DELAY();
+  I2CBB2_DELAY();
   //	stop();
   start();
   ack = send(DevAddress | 1);
@@ -218,22 +231,22 @@ void I2CBB2::start() {
   /* I2C Start condition, data line goes low when clock is high */
   SOFT_SCL2_HIGH();
   SOFT_SDA2_HIGH();
-  SOFT_I2C_DELAY();
+  I2CBB2_DELAY();
   SOFT_SDA2_LOW();
-  SOFT_I2C_DELAY();
+  I2CBB2_DELAY();
   SOFT_SCL2_LOW();
-  SOFT_I2C_DELAY();
+  I2CBB2_DELAY();
   SOFT_SDA2_HIGH();
 }
 
 void I2CBB2::stop() {
   /* I2C Stop condition, clock goes high when data is low */
   SOFT_SDA2_LOW();
-  SOFT_I2C_DELAY();
+  I2CBB2_DELAY();
   SOFT_SCL2_HIGH();
-  SOFT_I2C_DELAY();
+  I2CBB2_DELAY();
   SOFT_SDA2_HIGH();
-  SOFT_I2C_DELAY();
+  I2CBB2_DELAY();
 }
 
 bool I2CBB2::send(uint8_t value) {
@@ -270,9 +283,9 @@ uint8_t I2CBB2::read_bit() {
   uint8_t b;
 
   SOFT_SDA2_HIGH();
-  SOFT_I2C_DELAY();
+  I2CBB2_DELAY();
   SOFT_SCL2_HIGH();
-  SOFT_I2C_DELAY();
+  I2CBB2_DELAY();
 
   if (SOFT_SDA2_READ()) {
     b = 1;
@@ -308,9 +321,9 @@ void I2CBB2::write_bit(uint8_t val) {
     SOFT_SDA2_LOW();
   }
 
-  SOFT_I2C_DELAY();
+  I2CBB2_DELAY();
   SOFT_SCL2_HIGH();
-  SOFT_I2C_DELAY();
+  I2CBB2_DELAY();
   SOFT_SCL2_LOW();
 }
 

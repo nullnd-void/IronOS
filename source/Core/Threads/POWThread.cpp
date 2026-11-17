@@ -25,9 +25,18 @@ void startPOWTask(void const *argument __unused) {
 
   // Init any other misc sensors
   postRToSInit();
+#if !defined(MODEL_TS101)
   while (preStartChecksDone() == 0) {
     osDelay(3);
   }
+#endif
+  // TS101: start USB-PD straight away rather than after the ~1.6s tip-resistance
+  // measurement; some sources power-cycle VBUS if their Source_Capabilities go
+  // unanswered for ~2s. Until the tip is measured getTipResistanceX10() returns a
+  // conservative value, and we renegotiate once the measurement is done.
+#ifdef MODEL_TS101
+  bool renegotiatedAfterTipCheck = false;
+#endif
   // You have to run this once we are willing to answer PD messages
   // Setting up too early can mean that we miss the ~20ms window to respond on some chargers
 #ifdef POW_PD
@@ -50,16 +59,31 @@ void startPOWTask(void const *argument __unused) {
      * Then Good CRC is set while reading it out (racing on I2C read)
      * Then we would sleep as nothing to do, but 100ms> 20ms power supply typical timeout
      */
+#if defined(MODEL_TS101) && defined(POW_PD)
+    // TS101: until a PD contract exists, poll the FUSB302 every tick instead of relying on
+    // the INT_PD edge interrupt. Sources expect our Request within ~25ms of their
+    // Source_Capabilities; a missed edge plus the 50ms idle wait is too slow, and they
+    // power-cycle VBUS (PD debug stuck at state 6, then reboot).
+    const bool pdFastPoll = !USBPowerDelivery::negotiationHasWorked();
+#else
+    const bool pdFastPoll = false;
+#endif
     if (!getFUS302IRQLow()) {
-      res = xTaskNotifyWait(0x0, 0xFFFFFF, NULL, TICKS_100MS / 2);
+      res = xTaskNotifyWait(0x0, 0xFFFFFF, NULL, pdFastPoll ? 1 : (TICKS_100MS / 2));
     }
 
 #ifdef POW_PD
-    if (res != pdFALSE || getFUS302IRQLow()) {
+    if (res != pdFALSE || getFUS302IRQLow() || pdFastPoll) {
       USBPowerDelivery::IRQOccured();
     }
     USBPowerDelivery::PPSTimerCallback();
     USBPowerDelivery::step();
+#ifdef MODEL_TS101
+    if (!renegotiatedAfterTipCheck && preStartChecksDone() && USBPowerDelivery::negotiationHasWorked()) {
+      renegotiatedAfterTipCheck = true;
+      USBPowerDelivery::renegotiate();
+    }
+#endif
 
 #else
     (void)res;
