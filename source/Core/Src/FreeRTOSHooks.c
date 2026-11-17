@@ -25,5 +25,9 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
   (void)pcTaskName;
 
   // We dont have a good way to handle a stack overflow at this point in time
+#ifdef MODEL_TS101
+  extern void diagLog(uint8_t value);
+  diagLog(0x0A); // stack overflow
+#endif
   reboot();
 }

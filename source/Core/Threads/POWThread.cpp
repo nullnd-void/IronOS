@@ -24,6 +24,22 @@
 
 // Small worker thread to handle power (PD + QC) related steps
 
+#ifdef MODEL_TS101
+extern "C" void diagLog(uint8_t value);
+// Log uptime in 250ms steps (entries 0x10..0x3F)
+static void diagTick() {
+  static uint8_t last = 0;
+  uint32_t       q    = xTaskGetTickCount() / 250;
+  if (q > 0x2F) {
+    q = 0x2F;
+  }
+  while (last < q) {
+    last++;
+    diagLog(0x10 + last);
+  }
+}
+#endif
+
 void startPOWTask(void const *argument __unused) {
 
   // Init any other misc sensors
@@ -49,12 +65,19 @@ void startPOWTask(void const *argument __unused) {
   const bool pdUntouched = getButtonB();
   fusbDiag.listenOnly    = pdUntouched ? 0x0F : 0;
   if (pdUntouched) {
+    diagLog(0x09); // PD chip left untouched
     for (;;) {
-      osDelay(TICKS_100MS);
+      osDelay(TICKS_100MS / 2);
+      diagTick();
     }
   }
+  diagLog(0x02); // about to set up the PD chip
 #endif
   USBPowerDelivery::start();
+#ifdef MODEL_TS101
+  diagLog(0x03); // PD chip set up
+  bool diagLoggedContract = false;
+#endif
   // Crank the handle at boot until we are stable and waiting for IRQ
   USBPowerDelivery::step();
 #endif
@@ -93,6 +116,11 @@ void startPOWTask(void const *argument __unused) {
     USBPowerDelivery::PPSTimerCallback();
     USBPowerDelivery::step();
 #ifdef MODEL_TS101
+    diagTick();
+    if (!diagLoggedContract && USBPowerDelivery::negotiationHasWorked()) {
+      diagLoggedContract = true;
+      diagLog(0x05); // PD contract agreed
+    }
     if (!renegotiatedAfterTipCheck && preStartChecksDone() && USBPowerDelivery::negotiationHasWorked()) {
       renegotiatedAfterTipCheck = true;
       USBPowerDelivery::renegotiate();

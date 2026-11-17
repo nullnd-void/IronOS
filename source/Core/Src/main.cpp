@@ -35,8 +35,14 @@ osStaticThreadDef_t POWTaskControlBlock;
 
 // End FreeRTOS
 // Main sets up the hardware then hands over to the FreeRTOS kernel
+#ifdef MODEL_TS101
+extern "C" void diagLogBoot(void);
+#endif
 int main(void) {
   preRToSInit();
+#ifdef MODEL_TS101
+  diagLogBoot();
+#endif
 
   resetWatchdog();
   // Testing for which accelerometer is mounted

@@ -4,6 +4,7 @@
 #include "pd.h"
 #ifdef MODEL_TS101
 #include "fusb302b.h"
+extern "C" uint8_t diagLogReadBack(int16_t back);
 #endif
 #ifdef HAS_POWER_DEBUG_MENU
 OperatingMode showPDDebug(const ButtonState buttons, guiContext *cxt) {
@@ -11,6 +12,24 @@ OperatingMode showPDDebug(const ButtonState buttons, guiContext *cxt) {
   // Basically this is like the Debug menu, but instead we want to print out the PD status
   uint16_t *screen = &(cxt->scratch_state.state1);
 
+#ifdef MODEL_TS101
+  // Temporary: show the flash event log from before this boot, 10 entries per page,
+  // oldest at top-left, newest at bottom-right. Front button = one page further back.
+  {
+    const int16_t page = (int16_t)(*screen);
+    for (uint8_t i = 0; i < 10; i++) {
+      // i = 0 is the oldest entry on this page
+      uint8_t value = diagLogReadBack((int16_t)((page * 10) + (10 - i)));
+      OLED::setCursor((i % 5) * 24, (i < 5) ? 0 : 16);
+      OLED::drawHex(((uint32_t)value) << 24, FontStyle::SMALL, 2);
+    }
+    OLED::setCursor(120, 0);
+    OLED::drawHex(((uint32_t)page) << 28, FontStyle::SMALL, 1);
+    if (page > 14) {
+      (*screen) = 0;
+    }
+  }
+#else
   if ((*screen) == 0) {
     // Print the PD state machine
     uint8_t vbusState = 0;
@@ -98,6 +117,7 @@ OperatingMode showPDDebug(const ButtonState buttons, guiContext *cxt) {
       (*screen) = 0;
     }
   }
+#endif
   if (buttons == BUTTON_B_SHORT) {
     return OperatingMode::InitialisationDone;
   } else if (buttons == BUTTON_F_SHORT) {

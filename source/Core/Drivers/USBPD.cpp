@@ -1,4 +1,7 @@
 #include "USBPD.h"
+#ifdef MODEL_TS101
+extern "C" void diagLog(unsigned char value);
+#endif
 #include "configuration.h"
 #ifdef POW_PD
 #include "BSP_PD.h"
@@ -297,6 +300,11 @@ bool EPREvaluateCapabilityFunc(const epr_pd_msg *capabilities, pd_msg *request) 
 bool pdbs_dpm_evaluate_capability(const pd_msg *capabilities, pd_msg *request) {
   memset(lastCapabilities, 0, sizeof(lastCapabilities));
   memcpy(lastCapabilities, capabilities->obj, sizeof(uint32_t) * 7);
+#ifdef MODEL_TS101
+  if (!haveSeenCapabilityOffer) {
+    diagLog(0x04); // first Source_Capabilities reached the firmware
+  }
+#endif
   haveSeenCapabilityOffer = true;
   /* Get the number of PDOs */
   uint8_t numobj = PD_NUMOBJ_GET(capabilities);

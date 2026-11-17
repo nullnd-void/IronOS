@@ -339,11 +339,20 @@ void performTipMeasurementStep() {
   tipMeasurementOccuring = false;
 }
 #endif
+#ifdef MODEL_TS101
+extern "C" void diagLog(uint8_t value);
+#endif
 uint8_t preStartChecks() {
 #ifdef TIP_RESISTANCE_SENSE_Pin
   performTipMeasurementStep();
   if (preStartChecksDone() != 1) {
     return 0;
+  }
+#endif
+#ifdef MODEL_TS101
+  static bool diagLoggedPath = false;
+  if (!diagLoggedPath) {
+    diagLog(0x06); // tip check finished, about to select the power path
   }
 #endif
 #ifdef HAS_SPLIT_POWER_PATH
@@ -362,6 +371,12 @@ uint8_t preStartChecks() {
     }
   }
 
+#endif
+#ifdef MODEL_TS101
+  if (!diagLoggedPath) {
+    diagLoggedPath = true;
+    diagLog(0x07); // power path selected
+  }
 #endif
 
   return 1;
