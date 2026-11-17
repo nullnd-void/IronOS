@@ -12,6 +12,9 @@
 #include "QC3.h"
 #include "Settings.h"
 #include "USBPD.h"
+#if defined(MODEL_TS101) && defined(POW_PD)
+#include "fusb302b.h"
+#endif
 #include "cmsis_os.h"
 #include "configuration.h"
 #include "main.hpp"
@@ -40,6 +43,10 @@ void startPOWTask(void const *argument __unused) {
   // You have to run this once we are willing to answer PD messages
   // Setting up too early can mean that we miss the ~20ms window to respond on some chargers
 #ifdef POW_PD
+#ifdef MODEL_TS101
+  // Diagnostics: holding the rear button (B) at power-on puts USB-PD in listen-only mode
+  fusbDiag.listenOnly = getButtonB();
+#endif
   USBPowerDelivery::start();
   // Crank the handle at boot until we are stable and waiting for IRQ
   USBPowerDelivery::step();

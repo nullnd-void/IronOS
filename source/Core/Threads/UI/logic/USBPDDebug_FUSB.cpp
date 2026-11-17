@@ -2,6 +2,9 @@
 #include "ui_drawing.hpp"
 #ifdef POW_PD
 #include "pd.h"
+#ifdef MODEL_TS101
+#include "fusb302b.h"
+#endif
 #ifdef HAS_POWER_DEBUG_MENU
 OperatingMode showPDDebug(const ButtonState buttons, guiContext *cxt) {
   // Print out the USB-PD state
@@ -20,7 +23,38 @@ OperatingMode showPDDebug(const ButtonState buttons, guiContext *cxt) {
         }
       }
     }
+#ifdef MODEL_TS101
+    // Diagnostics screen (temporary), all values in hex, 16 chars per line:
+    //  line 1: <listen> <devId> <cc1><cc2> <irqA> <irqB> <irq>
+    //  line 2: <state> <rxGood> <rxBad> <statusFail> <lastHdr>
+    // drawHex prints the top nibbles of a 32-bit value, so shift the value up first
+    (void)vbusState;
+    OLED::setCursor(0, 0);
+    OLED::drawHex(((uint32_t)fusbDiag.listenOnly) << 28, FontStyle::SMALL, 1);
+    OLED::setCursor(16, 0);
+    OLED::drawHex(((uint32_t)fusbDiag.devId) << 24, FontStyle::SMALL, 2);
+    OLED::setCursor(40, 0);
+    OLED::drawHex(((uint32_t)fusbDiag.cc1) << 28, FontStyle::SMALL, 1);
+    OLED::drawHex(((uint32_t)fusbDiag.cc2) << 28, FontStyle::SMALL, 1);
+    OLED::setCursor(64, 0);
+    OLED::drawHex(((uint32_t)fusbDiag.irqA) << 24, FontStyle::SMALL, 2);
+    OLED::setCursor(88, 0);
+    OLED::drawHex(((uint32_t)fusbDiag.irqB) << 24, FontStyle::SMALL, 2);
+    OLED::setCursor(112, 0);
+    OLED::drawHex(((uint32_t)fusbDiag.irq) << 24, FontStyle::SMALL, 2);
+    OLED::setCursor(0, 16);
+    OLED::drawHex(((uint32_t)USBPowerDelivery::getStateNumber()) << 24, FontStyle::SMALL, 2);
+    OLED::setCursor(24, 16);
+    OLED::drawHex(((uint32_t)fusbDiag.rxGood) << 24, FontStyle::SMALL, 2);
+    OLED::setCursor(48, 16);
+    OLED::drawHex(((uint32_t)fusbDiag.rxBad) << 24, FontStyle::SMALL, 2);
+    OLED::setCursor(72, 16);
+    OLED::drawHex(((uint32_t)fusbDiag.statusFail) << 24, FontStyle::SMALL, 2);
+    OLED::setCursor(96, 16);
+    OLED::drawHex(((uint32_t)fusbDiag.lastHdr) << 16, FontStyle::SMALL, 4);
+#else
     ui_draw_usb_pd_debug_state(vbusState, USBPowerDelivery::getStateNumber());
+#endif
   } else {
     // Print out the Proposed power options one by one
     auto lastCaps           = USBPowerDelivery::getLastSeenCapabilities();

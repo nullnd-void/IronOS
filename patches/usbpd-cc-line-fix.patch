@@ -1,8 +1,46 @@
+diff --git a/include/fusb302b.h b/include/fusb302b.h
+index 4537c8c..38c76ab 100644
+--- a/include/fusb302b.h
++++ b/include/fusb302b.h
+@@ -21,6 +21,24 @@
+ #include "pd.h"
+ #include "pdb_msg.h"
+ 
++// --- TS101 PD diagnostics (temporary) ---
++// listenOnly: do not auto-acknowledge (no GoodCRC), so the source never expects a reply
++// and never hard-resets; received messages are only counted.
++struct FusbDiag {
++  volatile uint8_t  listenOnly;
++  volatile uint8_t  devId;      // FUSB_DEVICE_ID register
++  volatile uint8_t  cc1;        // BC_LVL measured on CC1
++  volatile uint8_t  cc2;        // BC_LVL measured on CC2
++  volatile uint8_t  irqA;       // OR of every INTERRUPTA value seen
++  volatile uint8_t  irqB;       // OR of every INTERRUPTB value seen
++  volatile uint8_t  irq;        // OR of every INTERRUPT value seen
++  volatile uint8_t  rxGood;     // messages read from the FIFO with an SOP token
++  volatile uint8_t  rxBad;      // FIFO entries that were not SOP
++  volatile uint8_t  statusFail; // failed status reads (I2C)
++  volatile uint16_t lastHdr;    // header of the last SOP message
++};
++extern FusbDiag fusbDiag;
++
+ class FUSB302 {
+ public:
+   typedef bool (*I2CFunc)(const uint8_t deviceAddr, const uint8_t registerAdd, const uint8_t size, uint8_t *buf);
 diff --git a/src/fusb302b.cpp b/src/fusb302b.cpp
-index 41d0e65..911bb76 100644
+index 41d0e65..b84547e 100644
 --- a/src/fusb302b.cpp
 +++ b/src/fusb302b.cpp
-@@ -152,28 +152,44 @@ bool FUSB302::fusb_setup() const {
+@@ -59,6 +59,8 @@ void    FUSB302::fusb_send_message(const pd_msg *msg) const {
+ 
+ bool FUSB302::fusb_rx_pending() const { return (fusb_read_byte(FUSB_STATUS1) & FUSB_STATUS1_RX_EMPTY) != FUSB_STATUS1_RX_EMPTY; }
+ 
++FusbDiag fusbDiag = {};
++
+ uint8_t FUSB302::fusb_read_message(pd_msg *msg) const {
+ 
+   static uint8_t garbage[4];
+@@ -152,28 +154,48 @@ bool FUSB302::fusb_setup() const {
  }
  
  bool FUSB302::runCCLineSelection() const {
@@ -54,10 +92,14 @@ index 41d0e65..911bb76 100644
 -    measuringCC1 = !measuringCC1;
    }
 -  return true;
++  fusbDiag.cc1      = cc1;
++  fusbDiag.cc2      = cc2;
 +  const bool useCC1 = cc1 > cc2;
 +  /* Select the live CC line for BMC signaling; also enable AUTO_CRC */
 +  // TX_CC1/TX_CC2|AUTO_CRC|SPECREV0
-+  if (!fusb_write_byte(FUSB_SWITCHES1, useCC1 ? 0x25 : 0x26)) {
++  // In listen-only mode AUTO_CRC (bit 2) is left off
++  const uint8_t autoCrc = fusbDiag.listenOnly ? 0x00 : 0x04;
++  if (!fusb_write_byte(FUSB_SWITCHES1, (useCC1 ? 0x21 : 0x22) | autoCrc)) {
 +    return false;
 +  }
 +  // PWDN1|PWDN2|MEAS_CC1/MEAS_CC2
@@ -65,3 +107,52 @@ index 41d0e65..911bb76 100644
  }
  
  bool FUSB302::isVBUSConnected() const {
+@@ -221,6 +243,7 @@ bool FUSB302::fusb_read_id() const {
+     return res;
+   if (version == 0 || version == 0xFF)
+     return false;
++  fusbDiag.devId = version;
+   return true;
+ }
+ /*
+diff --git a/src/policy_engine.cpp b/src/policy_engine.cpp
+index 68ead72..62f366f 100644
+--- a/src/policy_engine.cpp
++++ b/src/policy_engine.cpp
+@@ -293,6 +293,26 @@ bool PolicyEngine::IRQOccured() {
+   bool                 returnValue = false;
+   /* Read the FUSB302B status and interrupt registers */
+   if (fusb.fusb_get_status(&status)) {
++    fusbDiag.irqA = fusbDiag.irqA | status.interrupta;
++    fusbDiag.irqB = fusbDiag.irqB | status.interruptb;
++    fusbDiag.irq  = fusbDiag.irq | status.interrupt;
++    if (fusbDiag.listenOnly) {
++      // Diagnostics only: once a packet with a good CRC has arrived, drain and count
++      // what is in the RX FIFO. Nothing is passed to the policy engine or transmitted.
++      if (status.interrupt & FUSB_INTERRUPT_I_CRC_CHK) {
++        uint8_t guard = 0;
++        while (fusb.fusb_rx_pending() && guard < 8) {
++          guard++;
++          if (fusb.fusb_read_message(&irqMessage) == 0) {
++            fusbDiag.rxGood  = fusbDiag.rxGood + 1;
++            fusbDiag.lastHdr = irqMessage.hdr;
++          } else {
++            fusbDiag.rxBad = fusbDiag.rxBad + 1;
++          }
++        }
++      }
++      return false;
++    }
+ 
+     /* If the I_GCRCSENT flag is set, tell the Protocol RX thread */
+     // This means a message was received with a good CRC
+@@ -318,6 +338,8 @@ bool PolicyEngine::IRQOccured() {
+       notify(Notifications::I_OVRTEMP);
+       returnValue = true;
+     }
++  } else {
++    fusbDiag.statusFail = fusbDiag.statusFail + 1;
+   }
+   return returnValue;
+ }
+\ No newline at end of file
