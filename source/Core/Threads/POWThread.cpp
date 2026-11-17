@@ -44,8 +44,15 @@ void startPOWTask(void const *argument __unused) {
   // Setting up too early can mean that we miss the ~20ms window to respond on some chargers
 #ifdef POW_PD
 #ifdef MODEL_TS101
-  // Diagnostics: holding the rear button (B) at power-on puts USB-PD in listen-only mode
-  fusbDiag.listenOnly = getButtonB();
+  // Experiment: holding the rear button (B) at power-on leaves the USB-PD chip completely
+  // untouched (no setup, no polling), to see whether the iron then stays powered on USB-C.
+  const bool pdUntouched = getButtonB();
+  fusbDiag.listenOnly    = pdUntouched ? 0x0F : 0;
+  if (pdUntouched) {
+    for (;;) {
+      osDelay(TICKS_100MS);
+    }
+  }
 #endif
   USBPowerDelivery::start();
   // Crank the handle at boot until we are stable and waiting for IRQ

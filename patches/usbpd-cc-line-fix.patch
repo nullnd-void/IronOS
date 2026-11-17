@@ -28,7 +28,7 @@ index 4537c8c..38c76ab 100644
  public:
    typedef bool (*I2CFunc)(const uint8_t deviceAddr, const uint8_t registerAdd, const uint8_t size, uint8_t *buf);
 diff --git a/src/fusb302b.cpp b/src/fusb302b.cpp
-index 41d0e65..b84547e 100644
+index 41d0e65..ef93cc4 100644
 --- a/src/fusb302b.cpp
 +++ b/src/fusb302b.cpp
 @@ -59,6 +59,8 @@ void    FUSB302::fusb_send_message(const pd_msg *msg) const {
@@ -40,7 +40,23 @@ index 41d0e65..b84547e 100644
  uint8_t FUSB302::fusb_read_message(pd_msg *msg) const {
  
    static uint8_t garbage[4];
-@@ -152,28 +154,48 @@ bool FUSB302::fusb_setup() const {
+@@ -94,11 +96,12 @@ void FUSB302::fusb_send_hardrst() const {
+ }
+ 
+ bool FUSB302::fusb_setup() const {
+-  /* Fully reset the FUSB302B */
+-  if (!fusb_write_byte(FUSB_RESET, FUSB_RESET_SW_RES)) {
++  /* TS101 experiment: do NOT software-reset the chip (SW_RES). If the part drops its CC
++   * pull-downs (Rd) while resetting, a USB-C source sees a detach and removes VBUS, which
++   * is our only supply. Instead make sure both pull-downs are on and carry on. */
++  if (!fusb_write_byte(FUSB_SWITCHES0, 0x03)) {
+     return false;
+   }
+-  osDelay(10);
+   uint8_t tries = 0;
+   while (!fusb_read_id()) {
+     osDelay(10);
+@@ -152,28 +155,48 @@ bool FUSB302::fusb_setup() const {
  }
  
  bool FUSB302::runCCLineSelection() const {
@@ -107,7 +123,7 @@ index 41d0e65..b84547e 100644
  }
  
  bool FUSB302::isVBUSConnected() const {
-@@ -221,6 +243,7 @@ bool FUSB302::fusb_read_id() const {
+@@ -221,6 +244,7 @@ bool FUSB302::fusb_read_id() const {
      return res;
    if (version == 0 || version == 0xFF)
      return false;
